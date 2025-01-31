@@ -1,0 +1,6 @@
+vendor
+.idea
+composer.lock
+.DS_Store
+assets/node_modules
+assets/bun.lockb

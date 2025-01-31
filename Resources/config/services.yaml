@@ -1,0 +1,7 @@
+services:
+  Akyos\UXExport\:
+    resource: '../../*'
+    exclude: '../../{DependencyInjection,Entity,Tests,Kernel.php}'
+    autowire: true
+    autoconfigure: true
+    public: true
