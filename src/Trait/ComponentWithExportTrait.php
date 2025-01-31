@@ -29,7 +29,7 @@ trait ComponentWithExportTrait
     public ?string $class = '';
 
     #[LiveAction]
-    public function export(ExporterService $exporterService, UrlGeneratorInterface $urlGenerator, KernelInterface $kernel, ContainerInterface $container): RedirectResponse
+    public function export(ExporterService $exporterService, UrlGeneratorInterface $urlGenerator, ContainerInterface $container): RedirectResponse
     {
         $this->validateExportClass();
 
@@ -37,7 +37,11 @@ trait ComponentWithExportTrait
         $properties = $this->getProperties();
         $this->processExport($exporterService, $writer, $properties);
 
-        $fileName = $kernel->getProjectDir() . 'ComponentWithExportTrait.php/' .$container->getParameter('path').$this->exportFileName . '.' . $this->exportType;
+        if(!file_exists($container->getParameter('ux_export.path'))) {
+            mkdir($container->getParameter('ux_export.path'));
+        }
+
+        $fileName = $container->getParameter('ux_export.path').$this->exportFileName . '.' . $this->exportType;
         $writer->save($fileName);
 
         $url = $urlGenerator->generate('ux_export.download', ['path' => $fileName]);

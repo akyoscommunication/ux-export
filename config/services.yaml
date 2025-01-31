@@ -5,7 +5,10 @@ services:
     autowire: true
     autoconfigure: true
 
-  Akyos\UXExport\:
-    resource: './../../*'
-    tags: [ 'controller.service_arguments' ]
-    public: true
+  Akyos\UXExportBundle\:
+    resource: '../src/*'
+
+  Akyos\UXExportBundle\Controller\:
+    resource: '../src/Controller/*'
+    autowire: true
+    autoconfigure: true

@@ -1,0 +1,3 @@
+ux_export_bundle:
+  resource: "@UXExportBundle/config/routes.yaml"
+  prefix: "/ux-export"
