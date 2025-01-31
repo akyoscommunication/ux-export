@@ -4,7 +4,7 @@ namespace Akyos\UXExport\Trait;
 
 use Akyos\UXExport\Attribute\Exportable;
 use Akyos\UXExport\Attribute\ExportableProperty;
-use Akyos\UXExport\Services\ExporterService;
+use Akyos\UXExport\Service\ExporterService;
 use Doctrine\ORM\Query;
 use Doctrine\ORM\QueryBuilder;
 use PhpOffice\PhpSpreadsheet\Writer\BaseWriter;

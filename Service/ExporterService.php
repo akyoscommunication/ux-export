@@ -1,6 +1,6 @@
 <?php
 
-namespace Akyos\UXExport\Services;
+namespace Akyos\UXExport\Service;
 
 use Akyos\UXExport\Attribute\ExportableProperty;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
