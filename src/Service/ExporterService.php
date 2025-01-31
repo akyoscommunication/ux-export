@@ -1,8 +1,8 @@
 <?php
 
-namespace Akyos\UXExport\Service;
+namespace Akyos\UXExportBundle\Service;
 
-use Akyos\UXExport\Attribute\ExportableProperty;
+use Akyos\UXExportBundle\Attribute\ExportableProperty;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\BaseWriter;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;

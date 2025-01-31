@@ -1,6 +1,6 @@
 <?php
 
-namespace Akyos\UXExport\DependencyInjection;
+namespace Akyos\UXExportBundle\DependencyInjection;
 
 use Symfony\Component\Config\Definition\Builder\TreeBuilder;
 use Symfony\Component\Config\Definition\ConfigurationInterface;

@@ -1,6 +1,6 @@
 {
   "name": "akyos/ux-export",
-  "type": "library",
+  "type": "symfony-bundle",
   "description": "A Symfony bundle for export in live Component",
   "keywords": ["symfony", "PHP"],
   "minimum-stability": "stable",
@@ -20,7 +20,7 @@
     "symfony/config": "6.*|7.*"
   },
   "autoload": {
-    "psr-4": { "Akyos\\UXExport\\": "" },
+    "psr-4": { "Akyos\\UXExportBundle\\": "src/" },
     "exclude-from-classmap": [
       "/Tests/"
     ]

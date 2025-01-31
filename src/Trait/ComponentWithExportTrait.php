@@ -1,10 +1,10 @@
 <?php
 
-namespace Akyos\UXExport\Trait;
+namespace Akyos\UXExportBundle\Trait;
 
-use Akyos\UXExport\Attribute\Exportable;
-use Akyos\UXExport\Attribute\ExportableProperty;
-use Akyos\UXExport\Service\ExporterService;
+use Akyos\UXExportBundle\Attribute\Exportable;
+use Akyos\UXExportBundle\Attribute\ExportableProperty;
+use Akyos\UXExportBundle\Service\ExporterService;
 use Doctrine\ORM\Query;
 use Doctrine\ORM\QueryBuilder;
 use PhpOffice\PhpSpreadsheet\Writer\BaseWriter;
@@ -37,7 +37,7 @@ trait ComponentWithExportTrait
         $properties = $this->getProperties();
         $this->processExport($exporterService, $writer, $properties);
 
-        $fileName = $kernel->getProjectDir().'/'.$container->getParameter('path').$this->exportFileName . '.' . $this->exportType;
+        $fileName = $kernel->getProjectDir() . 'ComponentWithExportTrait.php/' .$container->getParameter('path').$this->exportFileName . '.' . $this->exportType;
         $writer->save($fileName);
 
         $url = $urlGenerator->generate('ux_export.download', ['path' => $fileName]);

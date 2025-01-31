@@ -1,6 +1,6 @@
 <?php
 
-namespace Akyos\UXExport\Attribute;
+namespace Akyos\UXExportBundle\Attribute;
 
 use Attribute;
 
