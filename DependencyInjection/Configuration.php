@@ -18,9 +18,8 @@ class Configuration implements ConfigurationInterface
             ->getRootNode()
             ->children()
             ->scalarNode('path')->defaultValue('public/')->end()
-            ->children()
             ->end()
-        ;
+            ->end();
 
         return $treeBuilder;
     }
