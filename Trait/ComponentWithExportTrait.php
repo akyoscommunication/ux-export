@@ -40,7 +40,7 @@ trait ComponentWithExportTrait
         $fileName = $kernel->getProjectDir().'/'.$container->getParameter('path').$this->exportFileName . '.' . $this->exportType;
         $writer->save($fileName);
 
-        $url = $urlGenerator->generate('app.download', ['path' => $fileName]);
+        $url = $urlGenerator->generate('ux_export.download', ['path' => $fileName]);
 
         return new RedirectResponse($url);
     }

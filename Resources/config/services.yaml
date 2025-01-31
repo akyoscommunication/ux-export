@@ -1,7 +1,11 @@
 services:
-  Akyos\UXExport\:
-    resource: '../../*'
-    exclude: '../../{DependencyInjection,Entity,Tests,Kernel.php}'
+  Symfony\Component\DependencyInjection\ContainerInterface: '@service_container'
+
+  _defaults:
     autowire: true
     autoconfigure: true
+
+  Akyos\UXExport\:
+    resource: './../../*'
+    tags: [ 'controller.service_arguments' ]
     public: true
