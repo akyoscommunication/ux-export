@@ -48,6 +48,58 @@ class ExporterServiceTest extends TestCase
         $this->assertSame('admin', $sheet->getCell([1,1])->getValue());
         $this->assertSame('user', $sheet->getCell([1,2])->getValue());
     }
+
+    public function testPopulateDataWithMethod(): void
+    {
+        $spreadsheet = new Spreadsheet();
+        $reflection = new \ReflectionClass(DummyWithMethod::class);
+        $properties = array_merge(
+            $reflection->getProperties(),
+            [$reflection->getMethod('getFullName')]
+        );
+        $this->service->generateMatrix($spreadsheet, $properties);
+
+        $data = [new DummyWithMethod('John', 'Doe')];
+        $this->service->populateData($spreadsheet, $data, $properties);
+
+        $sheet = $spreadsheet->getActiveSheet();
+        $this->assertSame('Full name', $sheet->getCell([3,1])->getValue());
+        $this->assertSame('John Doe', $sheet->getCell([3,2])->getValue());
+    }
+
+    public function testPopulateDataManyToManyLines(): void
+    {
+        $spreadsheet = new Spreadsheet();
+        $reflection = new \ReflectionClass(UserWithRolesLines::class);
+        $properties = $reflection->getProperties();
+        $this->service->generateMatrix($spreadsheet, $properties);
+
+        $data = [new UserWithRolesLines([new Role('admin'), new Role('user')])];
+        $this->service->populateData($spreadsheet, $data, $properties);
+
+        $sheet = $spreadsheet->getActiveSheet();
+        $this->assertSame("admin\nuser", $sheet->getCell([1,2])->getValue());
+    }
+
+    public function testPopulateDataManyToManySheet(): void
+    {
+        $spreadsheet = new Spreadsheet();
+        $reflection = new \ReflectionClass(UserWithRolesSheet::class);
+        $properties = $reflection->getProperties();
+        $this->service->generateMatrix($spreadsheet, $properties);
+
+        $data = [new UserWithRolesSheet([new Role('admin'), new Role('user')])];
+        $this->service->populateData($spreadsheet, $data, $properties);
+
+        $sheet = $spreadsheet->getSheetByName('roles');
+        $this->assertNotNull($sheet);
+        $this->assertSame('row', $sheet->getCell([1,1])->getValue());
+        $this->assertSame('name', $sheet->getCell([2,1])->getValue());
+        $this->assertSame(1, $sheet->getCell([1,2])->getValue());
+        $this->assertSame('admin', $sheet->getCell([2,2])->getValue());
+        $this->assertSame(1, $sheet->getCell([1,3])->getValue());
+        $this->assertSame('user', $sheet->getCell([2,3])->getValue());
+    }
 }
 
 #[Exportable]
@@ -63,4 +115,50 @@ class Dummy
 class Role
 {
     public function __construct(public string $name) {}
+}
+
+#[Exportable]
+class DummyWithMethod
+{
+    #[ExportableProperty(groups: ['default'])]
+    public string $firstName;
+
+    #[ExportableProperty(groups: ['default'])]
+    public string $lastName;
+
+    #[ExportableProperty(groups: ['default'])]
+    public function getFullName(): string
+    {
+        return $this->firstName.' '.$this->lastName;
+    }
+
+    public function __construct(string $firstName, string $lastName)
+    {
+        $this->firstName = $firstName;
+        $this->lastName = $lastName;
+    }
+}
+
+#[Exportable]
+class UserWithRolesLines
+{
+    #[ExportableProperty(groups: ['default'], fields: ['name'], manyToMany: ExportableProperty::MODE_LINES)]
+    public array $roles;
+
+    public function __construct(array $roles)
+    {
+        $this->roles = $roles;
+    }
+}
+
+#[Exportable]
+class UserWithRolesSheet
+{
+    #[ExportableProperty(groups: ['default'], fields: ['name'], manyToMany: ExportableProperty::MODE_SHEET)]
+    public array $roles;
+
+    public function __construct(array $roles)
+    {
+        $this->roles = $roles;
+    }
 }
