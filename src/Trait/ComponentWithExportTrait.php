@@ -5,6 +5,8 @@ namespace Akyos\UXExportBundle\Trait;
 use Akyos\UXExportBundle\Attribute\Exportable;
 use Akyos\UXExportBundle\Attribute\ExportableProperty;
 use Akyos\UXExportBundle\Service\ExporterService;
+use Symfony\Component\Filesystem\Exception\IOExceptionInterface;
+use Symfony\Component\Filesystem\Filesystem;
 use Doctrine\ORM\Query;
 use Doctrine\ORM\QueryBuilder;
 use PhpOffice\PhpSpreadsheet\Writer\BaseWriter;
@@ -37,11 +39,22 @@ trait ComponentWithExportTrait
         $properties = $this->getProperties();
         $this->processExport($exporterService, $writer, $properties);
 
-        if(!file_exists($container->getParameter('ux_export.path'))) {
-            mkdir($container->getParameter('ux_export.path'));
+        $filesystem = new Filesystem();
+        $path = $container->getParameter('ux_export.path');
+
+        try {
+            if (!$filesystem->exists($path)) {
+                $filesystem->mkdir($path, 0777, true);
+            }
+
+            if (!is_writable($path)) {
+                throw new \RuntimeException(sprintf('The directory "%s" is not writable.', $path));
+            }
+        } catch (IOExceptionInterface $exception) {
+            throw new \RuntimeException(sprintf('An error occurred while creating your directory at "%s"', $exception->getPath()), 0, $exception);
         }
 
-        $fileName = $container->getParameter('ux_export.path').$this->exportFileName . '.' . $this->exportType;
+        $fileName = $path . $this->exportFileName . '.' . $this->exportType;
         $writer->save($fileName);
 
         $url = $urlGenerator->generate('ux_export.download', ['path' => $fileName]);
