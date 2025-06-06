@@ -22,7 +22,7 @@ class CsvExporterServiceTest extends TestCase
         $data = [new SimpleUser('john', 'john@example.com')];
         $reflection = new \ReflectionClass(SimpleUser::class);
         $properties = $reflection->getProperties();
-        $file = $this->service->export($data, $properties, sys_get_temp_dir().'/', 'csv_test');
+        $file = $this->service->export($data, $properties, sys_get_temp_dir().'/', 'csv_test', 'default');
 
         $this->assertFileExists($file);
         $this->assertStringEndsWith('.csv', $file);
@@ -34,7 +34,7 @@ class CsvExporterServiceTest extends TestCase
         $data = [new UserWithRoles([new Role('admin'), new Role('user')])];
         $reflection = new \ReflectionClass(UserWithRoles::class);
         $properties = $reflection->getProperties();
-        $file = $this->service->export($data, $properties, sys_get_temp_dir().'/', 'csv_zip');
+        $file = $this->service->export($data, $properties, sys_get_temp_dir().'/', 'csv_zip', 'default');
 
         $this->assertFileExists($file);
         $this->assertStringEndsWith('.zip', $file);
@@ -46,7 +46,7 @@ class CsvExporterServiceTest extends TestCase
         $data = [new UserWithRoles([new Role('admin'), new Role('user')])];
         $reflection = new \ReflectionClass(UserWithRoles::class);
         $properties = $reflection->getProperties();
-        $file = $this->service->export($data, $properties, sys_get_temp_dir().'/', 'content');
+        $file = $this->service->export($data, $properties, sys_get_temp_dir().'/', 'content', 'default');
 
         $zip = new \ZipArchive();
         $zip->open($file);
@@ -82,7 +82,7 @@ class SimpleUser
 #[Exportable]
 class UserWithRoles
 {
-    #[ExportableProperty(groups: ['default'], fields: ['name'], manyToMany: ExportableProperty::MODE_SHEET)]
+    #[ExportableProperty(groups: ['default'], manyToMany: ExportableProperty::MODE_SHEET)]
     public array $roles;
 
     public function __construct(array $roles)
@@ -91,7 +91,14 @@ class UserWithRoles
     }
 }
 
+#[Exportable]
 class Role
 {
-    public function __construct(public string $name) {}
+    #[ExportableProperty(groups: ['default'])]
+    public string $name;
+
+    public function __construct(string $name)
+    {
+        $this->name = $name;
+    }
 }
