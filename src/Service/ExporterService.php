@@ -19,7 +19,7 @@ class ExporterService
         };
     }
 
-    public function generateMatrix(Spreadsheet $spreadsheet, array $properties): void
+    public function generateMatrix(Spreadsheet $spreadsheet, array $properties, array $data = [], ?string $group = null): void
     {
         $columnIndex = 1;
         foreach ($properties as $property) {
@@ -29,7 +29,13 @@ class ExporterService
                 continue;
             }
 
-            $fields = $attribute?->fields ?? [null];
+            $fields = $attribute?->fields;
+            if ($fields === null) {
+                $fields = $this->getRelatedFields($property, $data, $group);
+                if (empty($fields)) {
+                    $fields = [null];
+                }
+            }
 
             foreach ($fields as $field) {
                 $name = $this->getPropertyName($property, $field);
@@ -39,20 +45,48 @@ class ExporterService
         }
     }
 
-    public function populateData(Spreadsheet $spreadsheet, array $data, array $properties): void
+    public function populateData(Spreadsheet $spreadsheet, array $data, array $properties, ?string $group = null): void
     {
         $propertyAccessor = PropertyAccess::createPropertyAccessor();
-        foreach ($data as $rowIndex => $item) {
-            foreach ($properties as $colIndex => $property) {
-                if ($property instanceof \ReflectionMethod) {
-                    $value = $property->invoke($item);
-                } else {
-                    $value = $propertyAccessor->getValue($item, $property->getName());
+
+        $rowIndex = 2;
+        foreach ($data as $item) {
+            $lines = $this->getLinesCount($item, $properties, $propertyAccessor);
+            for ($line = 0; $line < $lines; $line++) {
+                $columnIndex = 1;
+                foreach ($properties as $property) {
+                    $attribute = $this->getAttribute($property);
+
+                    if ($attribute && $attribute->manyToMany === ExportableProperty::MODE_SHEET) {
+                        continue;
+                    }
+
+                    if ($property instanceof \ReflectionMethod) {
+                        $value = $property->invoke($item);
+                    } else {
+                        $value = $propertyAccessor->getValue($item, $property->getName());
+                    }
+
+                    if ($attribute && $attribute->manyToMany === ExportableProperty::MODE_LINES) {
+                        $value = ($value[$line] ?? null);
+                    }
+
+                    $fields = $attribute?->fields;
+                    if ($fields === null) {
+                        $fields = $this->getRelatedFields($property, [$value], $group);
+                    }
+                    $values = $this->extractValues($value, $fields, $propertyAccessor, $group);
+
+                    foreach ($values as $val) {
+                        $spreadsheet->getActiveSheet()->setCellValue([$columnIndex, $rowIndex], $val);
+                        $columnIndex++;
+                    }
                 }
-                $spreadsheet->getActiveSheet()->setCellValue([$colIndex + 1, $rowIndex + 2], $value);
+                $rowIndex++;
             }
         }
-        $this->populateManyToManySheets($spreadsheet, $data, $properties, $propertyAccessor);
+
+        $this->populateManyToManySheets($spreadsheet, $data, $properties, $propertyAccessor, $group);
     }
 
     public function manyToManyLines(iterable $collection, string $property): string
@@ -99,7 +133,7 @@ class ExporterService
         return !empty($attributes) ? $attributes[0]->newInstance() : null;
     }
 
-    private function extractValues(mixed $value, ?array $fields, $accessor): array
+    private function extractValues(mixed $value, ?array $fields, $accessor, ?string $group): array
     {
         if ($fields) {
             $vals = [];
@@ -108,6 +142,18 @@ class ExporterService
             }
 
             return $vals;
+        }
+
+        if (is_object($value)) {
+            $fields = $this->getFieldsFromEntity(get_class($value), $group);
+            if ($fields) {
+                $vals = [];
+                foreach ($fields as $field) {
+                    $vals[] = $accessor->getValue($value, $field);
+                }
+
+                return $vals;
+            }
         }
 
         return [$value];
@@ -133,7 +179,7 @@ class ExporterService
         return $max;
     }
 
-    private function populateManyToManySheets(Spreadsheet $spreadsheet, array $data, array $properties, $accessor): void
+    private function populateManyToManySheets(Spreadsheet $spreadsheet, array $data, array $properties, $accessor, ?string $group): void
     {
         foreach ($properties as $property) {
             $attribute = $this->getAttribute($property);
@@ -146,7 +192,8 @@ class ExporterService
 
             $headerIndex = 1;
             $sheet->setCellValue([1, 1], 'row');
-            foreach ($attribute->fields ?? [] as $field) {
+            $fields = $attribute->fields ?? $this->getRelatedFields($property, $data, $group);
+            foreach ($fields as $field) {
                 $sheet->setCellValue([$headerIndex + 1, 1], $field);
                 $headerIndex++;
             }
@@ -160,7 +207,7 @@ class ExporterService
                 foreach ($collection as $element) {
                     $sheet->setCellValue([1, $rowIndex], $i + 1);
                     $colIndex = 2;
-                    foreach ($attribute->fields ?? [] as $field) {
+                    foreach ($fields as $field) {
                         $sheet->setCellValue([$colIndex, $rowIndex], $accessor->getValue($element, $field));
                         $colIndex++;
                     }
@@ -168,5 +215,68 @@ class ExporterService
                 }
             }
         }
+    }
+
+    private function getRelatedFields(\ReflectionProperty|\ReflectionMethod $property, array $data, ?string $group): array
+    {
+        $class = $this->detectClass($property, $data);
+        if (!$class) {
+            return [];
+        }
+
+        return $this->getFieldsFromEntity($class, $group);
+    }
+
+    private function detectClass(\ReflectionProperty|\ReflectionMethod $property, array $data): ?string
+    {
+        if ($property instanceof \ReflectionProperty) {
+            $type = $property->getType();
+            if ($type instanceof \ReflectionNamedType && !$type->isBuiltin()) {
+                return $type->getName();
+            }
+        } elseif ($property instanceof \ReflectionMethod) {
+            $type = $property->getReturnType();
+            if ($type instanceof \ReflectionNamedType && !$type->isBuiltin()) {
+                return $type->getName();
+            }
+        }
+
+        foreach ($data as $item) {
+            if ($property instanceof \ReflectionProperty) {
+                $val = PropertyAccess::createPropertyAccessor()->getValue($item, $property->getName());
+            } else {
+                $val = $property->invoke($item);
+            }
+
+            if (is_iterable($val)) {
+                foreach ($val as $element) {
+                    if (is_object($element)) {
+                        return get_class($element);
+                    }
+                }
+            } elseif (is_object($val)) {
+                return get_class($val);
+            }
+        }
+
+        return null;
+    }
+
+    private function getFieldsFromEntity(string $class, ?string $group): array
+    {
+        $reflection = new \ReflectionClass($class);
+        $fields = [];
+        foreach ($reflection->getProperties() as $prop) {
+            $attr = $prop->getAttributes(ExportableProperty::class);
+            if (!$attr) {
+                continue;
+            }
+            $inst = $attr[0]->newInstance();
+            if ($group === null || in_array($group, $inst->groups)) {
+                $fields[] = $prop->getName();
+            }
+        }
+
+        return $fields;
     }
 }

@@ -5,15 +5,14 @@ namespace Akyos\UXExportBundle\Trait;
 use Akyos\UXExportBundle\Attribute\Exportable;
 use Akyos\UXExportBundle\Attribute\ExportableProperty;
 use Akyos\UXExportBundle\Service\ExporterService;
+use Akyos\UXExportBundle\Service\CsvExporterService;
 use Symfony\Component\Filesystem\Exception\IOExceptionInterface;
 use Symfony\Component\Filesystem\Filesystem;
 use Doctrine\ORM\Query;
 use Doctrine\ORM\QueryBuilder;
-use PhpOffice\PhpSpreadsheet\Writer\BaseWriter;
 use ReflectionClass;
 use Symfony\Component\DependencyInjection\ContainerInterface;
 use Symfony\Component\HttpFoundation\RedirectResponse;
-use Symfony\Component\HttpKernel\KernelInterface;
 use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
 use Symfony\Component\Serializer\Attribute\Groups;
 use Symfony\UX\LiveComponent\Attribute\LiveAction;
@@ -28,16 +27,18 @@ trait ComponentWithExportTrait
     public string $exportFileName = 'export';
 
     #[LiveProp(writable: true)]
+    public ?string $exportGroup = null;
+
+    #[LiveProp(writable: true)]
     public ?string $class = '';
 
     #[LiveAction]
-    public function export(ExporterService $exporterService, UrlGeneratorInterface $urlGenerator, ContainerInterface $container): RedirectResponse
+    public function export(ExporterService $exporterService, CsvExporterService $csvExporterService, UrlGeneratorInterface $urlGenerator, ContainerInterface $container): RedirectResponse
     {
         $this->validateExportClass();
 
-        $writer = $exporterService->getWriter($this->exportType);
         $properties = $this->getProperties();
-        $this->processExport($exporterService, $writer, $properties);
+        $data = $this->getExportData();
 
         $filesystem = new Filesystem();
         $path = $container->getParameter('ux_export.path');
@@ -54,8 +55,15 @@ trait ComponentWithExportTrait
             throw new \RuntimeException(sprintf('An error occurred while creating your directory at "%s"', $exception->getPath()), 0, $exception);
         }
 
-        $fileName = $path . $this->exportFileName . '.' . $this->exportType;
-        $writer->save($fileName);
+        if ($this->exportType === 'csv') {
+            $fileName = $csvExporterService->export($data, $properties, $path, $this->exportFileName, $this->exportGroup);
+        } else {
+            $writer = $exporterService->getWriter($this->exportType);
+            $exporterService->generateMatrix($writer->getSpreadsheet(), $properties, $data, $this->exportGroup);
+            $exporterService->populateData($writer->getSpreadsheet(), $data, $properties, $this->exportGroup);
+            $fileName = rtrim($path, '/') . '/' . $this->exportFileName . '.' . $this->exportType;
+            $writer->save($fileName);
+        }
 
         $url = $urlGenerator->generate('ux_export.download', ['path' => $fileName]);
 
@@ -82,11 +90,7 @@ trait ComponentWithExportTrait
     private function getProperties(): array
     {
         $reflectionClass = new ReflectionClass($this->class);
-        $group = $reflectionClass->getAttributes(Exportable::class)[0]->newInstance()->group;
-
-        if (!$group) {
-            return $reflectionClass->getProperties();
-        }
+        $group = $this->exportGroup;
 
         $properties = $this->extractProperties($reflectionClass, $group);
         $methods = $this->extractMethods($reflectionClass, $group);
@@ -97,7 +101,7 @@ trait ComponentWithExportTrait
         return array_map(fn($item) => $item['property'], $combined);
     }
 
-    private function extractProperties(ReflectionClass $reflectionClass, string $group): array
+    private function extractProperties(ReflectionClass $reflectionClass, ?string $group): array
     {
         $properties = [];
         foreach ($reflectionClass->getProperties() as $property) {
@@ -105,14 +109,14 @@ trait ComponentWithExportTrait
             $exportableProperty = $property->getAttributes($attributeClass);
 
             if ($this->shouldIncludeProperty($property, $group, $exportableProperty)) {
-                $position = $exportableProperty[0]->newInstance()->position ?? null;
+                $position = !empty($exportableProperty) ? $exportableProperty[0]->newInstance()->position : null;
                 $properties[] = ['property' => $property, 'position' => $position];
             }
         }
         return $properties;
     }
 
-    private function extractMethods(ReflectionClass $reflectionClass, string $group): array
+    private function extractMethods(ReflectionClass $reflectionClass, ?string $group): array
     {
         $methods = [];
         foreach ($reflectionClass->getMethods() as $method) {
@@ -120,28 +124,33 @@ trait ComponentWithExportTrait
             $exportableProperty = $method->getAttributes($attributeClass);
 
             if ($this->shouldIncludeProperty($method, $group, $exportableProperty)) {
-                $position = $exportableProperty[0]->newInstance()->position ?? null;
+                $position = !empty($exportableProperty) ? $exportableProperty[0]->newInstance()->position : null;
                 $methods[] = ['property' => $method, 'position' => $position];
             }
         }
         return $methods;
     }
 
-    private function shouldIncludeProperty($property, string $group, array $exportableProperty): bool
+    private function shouldIncludeProperty($property, ?string $group, array $exportableProperty): bool
     {
         if (!empty($exportableProperty)) {
+            if ($group === null) {
+                return true;
+            }
+
             return in_array($group, $exportableProperty[0]->newInstance()->groups);
         }
 
         $groupsProperty = $property->getAttributes(Groups::class);
-        return !empty($groupsProperty) && in_array($group, $groupsProperty[0]->newInstance()->getGroups());
-    }
+        if (!empty($groupsProperty)) {
+            if ($group === null) {
+                return true;
+            }
 
-    private function processExport(ExporterService $exporterService, BaseWriter $writer, array $properties): void
-    {
-        $exporterService->generateMatrix($writer->getSpreadsheet(), $properties);
-        $data = $this->getExportData();
-        $exporterService->populateData($writer->getSpreadsheet(), $data, $properties);
+            return in_array($group, $groupsProperty[0]->newInstance()->getGroups());
+        }
+
+        return false;
     }
 
     private function getExportData(): array
