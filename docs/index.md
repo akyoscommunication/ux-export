@@ -11,5 +11,7 @@ Key features:
 * `ComponentWithExportTrait` to easily add an `export` action
 * Attributes to configure which entity properties are exported
 * Set `$exportType` to `csv` for plain CSV output or zipped files when a relation uses the `sheet` mode
+* Choose the serializer group at runtime with the `$exportGroup` property
+
 
 See the README for detailed examples of `Exportable` and `ExportableProperty`.

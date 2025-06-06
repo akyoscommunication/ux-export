@@ -19,11 +19,12 @@ class CsvExporterService
      * Generate CSV files from data and properties.
      * Returns the path of the generated file (CSV or ZIP).
      */
-    public function export(array $data, array $properties, string $path, string $baseName): string
+    public function export(array $data, array $properties, string $path, string $baseName, ?string $group = null): string
     {
         $spreadsheet = new Spreadsheet();
-        $this->exporterService->generateMatrix($spreadsheet, $properties);
-        $this->exporterService->populateData($spreadsheet, $data, $properties);
+        $this->exporterService->generateMatrix($spreadsheet, $properties, $data, $group);
+        $this->exporterService->populateData($spreadsheet, $data, $properties, $group);
+
 
         $files = [];
         foreach ($spreadsheet->getAllSheets() as $index => $sheet) {

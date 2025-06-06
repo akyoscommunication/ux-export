@@ -27,6 +27,9 @@ trait ComponentWithExportTrait
     public string $exportFileName = 'export';
 
     #[LiveProp(writable: true)]
+    public ?string $exportGroup = null;
+
+    #[LiveProp(writable: true)]
     public ?string $class = '';
 
     #[LiveAction]
@@ -53,11 +56,11 @@ trait ComponentWithExportTrait
         }
 
         if ($this->exportType === 'csv') {
-            $fileName = $csvExporterService->export($data, $properties, $path, $this->exportFileName);
+            $fileName = $csvExporterService->export($data, $properties, $path, $this->exportFileName, $this->exportGroup);
         } else {
             $writer = $exporterService->getWriter($this->exportType);
-            $exporterService->generateMatrix($writer->getSpreadsheet(), $properties);
-            $exporterService->populateData($writer->getSpreadsheet(), $data, $properties);
+            $exporterService->generateMatrix($writer->getSpreadsheet(), $properties, $data, $this->exportGroup);
+            $exporterService->populateData($writer->getSpreadsheet(), $data, $properties, $this->exportGroup);
             $fileName = rtrim($path, '/') . '/' . $this->exportFileName . '.' . $this->exportType;
             $writer->save($fileName);
         }
@@ -87,11 +90,7 @@ trait ComponentWithExportTrait
     private function getProperties(): array
     {
         $reflectionClass = new ReflectionClass($this->class);
-        $group = $reflectionClass->getAttributes(Exportable::class)[0]->newInstance()->group;
-
-        if (!$group) {
-            return $reflectionClass->getProperties();
-        }
+        $group = $this->exportGroup;
 
         $properties = $this->extractProperties($reflectionClass, $group);
         $methods = $this->extractMethods($reflectionClass, $group);
@@ -102,7 +101,7 @@ trait ComponentWithExportTrait
         return array_map(fn($item) => $item['property'], $combined);
     }
 
-    private function extractProperties(ReflectionClass $reflectionClass, string $group): array
+    private function extractProperties(ReflectionClass $reflectionClass, ?string $group): array
     {
         $properties = [];
         foreach ($reflectionClass->getProperties() as $property) {
@@ -110,14 +109,14 @@ trait ComponentWithExportTrait
             $exportableProperty = $property->getAttributes($attributeClass);
 
             if ($this->shouldIncludeProperty($property, $group, $exportableProperty)) {
-                $position = $exportableProperty[0]->newInstance()->position ?? null;
+                $position = !empty($exportableProperty) ? $exportableProperty[0]->newInstance()->position : null;
                 $properties[] = ['property' => $property, 'position' => $position];
             }
         }
         return $properties;
     }
 
-    private function extractMethods(ReflectionClass $reflectionClass, string $group): array
+    private function extractMethods(ReflectionClass $reflectionClass, ?string $group): array
     {
         $methods = [];
         foreach ($reflectionClass->getMethods() as $method) {
@@ -125,21 +124,32 @@ trait ComponentWithExportTrait
             $exportableProperty = $method->getAttributes($attributeClass);
 
             if ($this->shouldIncludeProperty($method, $group, $exportableProperty)) {
-                $position = $exportableProperty[0]->newInstance()->position ?? null;
+                $position = !empty($exportableProperty) ? $exportableProperty[0]->newInstance()->position : null;
                 $methods[] = ['property' => $method, 'position' => $position];
             }
         }
         return $methods;
     }
 
-    private function shouldIncludeProperty($property, string $group, array $exportableProperty): bool
+    private function shouldIncludeProperty($property, ?string $group, array $exportableProperty): bool
     {
         if (!empty($exportableProperty)) {
+            if ($group === null) {
+                return true;
+            }
+
             return in_array($group, $exportableProperty[0]->newInstance()->groups);
         }
 
         $groupsProperty = $property->getAttributes(Groups::class);
-        return !empty($groupsProperty) && in_array($group, $groupsProperty[0]->newInstance()->getGroups());
+        if (!empty($groupsProperty)) {
+            if ($group === null) {
+                return true;
+            }
+            return in_array($group, $groupsProperty[0]->newInstance()->getGroups());
+        }
+
+        return false;
     }
 
     private function getExportData(): array
