@@ -48,6 +48,7 @@ class CsvExporterServiceTest extends TestCase
         $properties = $reflection->getProperties();
         $file = $this->service->export($data, $properties, sys_get_temp_dir().'/', 'content', 'default');
 
+
         $zip = new \ZipArchive();
         $zip->open($file);
         $this->assertSame(2, $zip->numFiles);
@@ -83,6 +84,7 @@ class SimpleUser
 class UserWithRoles
 {
     #[ExportableProperty(groups: ['default'], manyToMany: ExportableProperty::MODE_SHEET)]
+
     public array $roles;
 
     public function __construct(array $roles)
