@@ -42,16 +42,40 @@ class ExporterService
     public function populateData(Spreadsheet $spreadsheet, array $data, array $properties): void
     {
         $propertyAccessor = PropertyAccess::createPropertyAccessor();
-        foreach ($data as $rowIndex => $item) {
-            foreach ($properties as $colIndex => $property) {
-                if ($property instanceof \ReflectionMethod) {
-                    $value = $property->invoke($item);
-                } else {
-                    $value = $propertyAccessor->getValue($item, $property->getName());
+
+        $rowIndex = 2;
+        foreach ($data as $item) {
+            $lines = $this->getLinesCount($item, $properties, $propertyAccessor);
+            for ($line = 0; $line < $lines; $line++) {
+                $columnIndex = 1;
+                foreach ($properties as $property) {
+                    $attribute = $this->getAttribute($property);
+
+                    if ($attribute && $attribute->manyToMany === ExportableProperty::MODE_SHEET) {
+                        continue;
+                    }
+
+                    if ($property instanceof \ReflectionMethod) {
+                        $value = $property->invoke($item);
+                    } else {
+                        $value = $propertyAccessor->getValue($item, $property->getName());
+                    }
+
+                    if ($attribute && $attribute->manyToMany === ExportableProperty::MODE_LINES) {
+                        $value = ($value[$line] ?? null);
+                    }
+
+                    $values = $this->extractValues($value, $attribute?->fields, $propertyAccessor);
+
+                    foreach ($values as $val) {
+                        $spreadsheet->getActiveSheet()->setCellValue([$columnIndex, $rowIndex], $val);
+                        $columnIndex++;
+                    }
                 }
-                $spreadsheet->getActiveSheet()->setCellValue([$colIndex + 1, $rowIndex + 2], $value);
+                $rowIndex++;
             }
         }
+
         $this->populateManyToManySheets($spreadsheet, $data, $properties, $propertyAccessor);
     }
 

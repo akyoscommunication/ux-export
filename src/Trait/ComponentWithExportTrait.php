@@ -5,15 +5,14 @@ namespace Akyos\UXExportBundle\Trait;
 use Akyos\UXExportBundle\Attribute\Exportable;
 use Akyos\UXExportBundle\Attribute\ExportableProperty;
 use Akyos\UXExportBundle\Service\ExporterService;
+use Akyos\UXExportBundle\Service\CsvExporterService;
 use Symfony\Component\Filesystem\Exception\IOExceptionInterface;
 use Symfony\Component\Filesystem\Filesystem;
 use Doctrine\ORM\Query;
 use Doctrine\ORM\QueryBuilder;
-use PhpOffice\PhpSpreadsheet\Writer\BaseWriter;
 use ReflectionClass;
 use Symfony\Component\DependencyInjection\ContainerInterface;
 use Symfony\Component\HttpFoundation\RedirectResponse;
-use Symfony\Component\HttpKernel\KernelInterface;
 use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
 use Symfony\Component\Serializer\Attribute\Groups;
 use Symfony\UX\LiveComponent\Attribute\LiveAction;
@@ -31,13 +30,12 @@ trait ComponentWithExportTrait
     public ?string $class = '';
 
     #[LiveAction]
-    public function export(ExporterService $exporterService, UrlGeneratorInterface $urlGenerator, ContainerInterface $container): RedirectResponse
+    public function export(ExporterService $exporterService, CsvExporterService $csvExporterService, UrlGeneratorInterface $urlGenerator, ContainerInterface $container): RedirectResponse
     {
         $this->validateExportClass();
 
-        $writer = $exporterService->getWriter($this->exportType);
         $properties = $this->getProperties();
-        $this->processExport($exporterService, $writer, $properties);
+        $data = $this->getExportData();
 
         $filesystem = new Filesystem();
         $path = $container->getParameter('ux_export.path');
@@ -54,8 +52,15 @@ trait ComponentWithExportTrait
             throw new \RuntimeException(sprintf('An error occurred while creating your directory at "%s"', $exception->getPath()), 0, $exception);
         }
 
-        $fileName = $path . $this->exportFileName . '.' . $this->exportType;
-        $writer->save($fileName);
+        if ($this->exportType === 'csv') {
+            $fileName = $csvExporterService->export($data, $properties, $path, $this->exportFileName);
+        } else {
+            $writer = $exporterService->getWriter($this->exportType);
+            $exporterService->generateMatrix($writer->getSpreadsheet(), $properties);
+            $exporterService->populateData($writer->getSpreadsheet(), $data, $properties);
+            $fileName = rtrim($path, '/') . '/' . $this->exportFileName . '.' . $this->exportType;
+            $writer->save($fileName);
+        }
 
         $url = $urlGenerator->generate('ux_export.download', ['path' => $fileName]);
 
@@ -135,13 +140,6 @@ trait ComponentWithExportTrait
 
         $groupsProperty = $property->getAttributes(Groups::class);
         return !empty($groupsProperty) && in_array($group, $groupsProperty[0]->newInstance()->getGroups());
-    }
-
-    private function processExport(ExporterService $exporterService, BaseWriter $writer, array $properties): void
-    {
-        $exporterService->generateMatrix($writer->getSpreadsheet(), $properties);
-        $data = $this->getExportData();
-        $exporterService->populateData($writer->getSpreadsheet(), $data, $properties);
     }
 
     private function getExportData(): array
