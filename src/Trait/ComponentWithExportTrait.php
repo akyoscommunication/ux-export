@@ -146,7 +146,6 @@ trait ComponentWithExportTrait
             if ($group === null) {
                 return true;
             }
-
             return in_array($group, $groupsProperty[0]->newInstance()->getGroups());
         }
 

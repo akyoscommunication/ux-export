@@ -25,6 +25,7 @@ class CsvExporterService
         $this->exporterService->generateMatrix($spreadsheet, $properties, $data, $group);
         $this->exporterService->populateData($spreadsheet, $data, $properties, $group);
 
+
         $files = [];
         foreach ($spreadsheet->getAllSheets() as $index => $sheet) {
             $csvWriter = new Csv($spreadsheet);

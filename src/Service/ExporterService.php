@@ -77,6 +77,7 @@ class ExporterService
                     }
                     $values = $this->extractValues($value, $fields, $propertyAccessor, $group);
 
+
                     foreach ($values as $val) {
                         $spreadsheet->getActiveSheet()->setCellValue([$columnIndex, $rowIndex], $val);
                         $columnIndex++;
@@ -87,6 +88,7 @@ class ExporterService
         }
 
         $this->populateManyToManySheets($spreadsheet, $data, $properties, $propertyAccessor, $group);
+
     }
 
     public function manyToManyLines(iterable $collection, string $property): string
