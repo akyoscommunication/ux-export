@@ -24,5 +24,16 @@
     "exclude-from-classmap": [
       "/Tests/"
     ]
+  },
+  "require-dev": {
+    "phpunit/phpunit": "^10.3"
+  },
+  "autoload-dev": {
+    "psr-4": {
+      "Akyos\\UXExportBundle\\Tests\\": "tests/"
+    }
+  },
+  "scripts": {
+    "test": "phpunit"
   }
 }

@@ -6,6 +6,7 @@ use Akyos\UXExportBundle\Attribute\ExportableProperty;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\BaseWriter;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
+use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
 use Symfony\Component\PropertyAccess\PropertyAccess;
 
 class ExporterService
@@ -35,6 +36,30 @@ class ExporterService
                 $value = $propertyAccessor->getValue($item, $property->getName());
                 $spreadsheet->getActiveSheet()->setCellValue([$colIndex + 1, $rowIndex + 2], $value);
             }
+        }
+    }
+
+    public function manyToManyLines(iterable $collection, string $property): string
+    {
+        $accessor = PropertyAccess::createPropertyAccessor();
+        $values = [];
+
+        foreach ($collection as $item) {
+            $values[] = $accessor->getValue($item, $property);
+        }
+
+        return implode("\n", $values);
+    }
+
+    public function manyToManySheet(Spreadsheet $spreadsheet, iterable $collection, string $property, string $sheetName): void
+    {
+        $accessor = PropertyAccess::createPropertyAccessor();
+        $sheet = new Worksheet($spreadsheet, $sheetName);
+        $spreadsheet->addSheet($sheet);
+
+        foreach ($collection as $rowIndex => $item) {
+            $value = $accessor->getValue($item, $property);
+            $sheet->setCellValue([1, $rowIndex + 1], $value);
         }
     }
 

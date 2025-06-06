@@ -4,3 +4,4 @@ composer.lock
 .DS_Store
 assets/node_modules
 assets/bun.lockb
+.phpunit.result.cache
