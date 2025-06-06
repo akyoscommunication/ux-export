@@ -39,3 +39,19 @@ return [
     <vendor>\<bundle-name>\<bundle-long-name>::class => ['all' => true],
 ];
 ```
+
+Usage of Exportable Attributes
+------------------------------
+
+The `ExportableProperty` attribute accepts two new options:
+
+- `fields`: an array of property names to export from a related entity.
+- `manyToMany`: set to `lines` to duplicate rows for each relation or to
+  `sheet` to create an additional worksheet listing the intermediate table.
+
+Example:
+
+```php
+#[ExportableProperty(groups: ['export'], fields: ['name', 'email'], manyToMany: ExportableProperty::MODE_SHEET)]
+private Collection $users;
+```
