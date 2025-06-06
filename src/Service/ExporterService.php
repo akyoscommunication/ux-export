@@ -32,7 +32,11 @@ class ExporterService
 
         foreach ($data as $rowIndex => $item) {
             foreach ($properties as $colIndex => $property) {
-                $value = $propertyAccessor->getValue($item, $property->getName());
+                if ($property instanceof \ReflectionMethod) {
+                    $value = $property->invoke($item);
+                } else {
+                    $value = $propertyAccessor->getValue($item, $property->getName());
+                }
                 $spreadsheet->getActiveSheet()->setCellValue([$colIndex + 1, $rowIndex + 2], $value);
             }
         }
