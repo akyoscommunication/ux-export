@@ -13,5 +13,4 @@ Key features:
 * Set `$exportType` to `csv` for plain CSV output or zipped files when a relation uses the `sheet` mode
 * Choose the serializer group at runtime with the `$exportGroup` property
 
-
 See the README for detailed examples of `Exportable` and `ExportableProperty`.

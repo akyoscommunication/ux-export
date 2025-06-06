@@ -36,7 +36,6 @@ class CsvExporterServiceTest extends TestCase
         $properties = $reflection->getProperties();
         $file = $this->service->export($data, $properties, sys_get_temp_dir().'/', 'csv_zip', 'default');
 
-
         $this->assertFileExists($file);
         $this->assertStringEndsWith('.zip', $file);
         @unlink($file);

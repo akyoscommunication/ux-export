@@ -244,10 +244,26 @@ class ExporterService
         }
 
         foreach ($data as $item) {
+            if (!\is_object($item) && !\is_array($item)) {
+                continue;
+            }
+
             if ($property instanceof \ReflectionProperty) {
-                $val = PropertyAccess::createPropertyAccessor()->getValue($item, $property->getName());
+                try {
+                    $val = PropertyAccess::createPropertyAccessor()->getValue($item, $property->getName());
+                } catch (\Throwable) {
+                    continue;
+                }
             } else {
-                $val = $property->invoke($item);
+                if (!\is_object($item)) {
+                    continue;
+                }
+
+                try {
+                    $val = $property->invoke($item);
+                } catch (\Throwable) {
+                    continue;
+                }
             }
 
             if (is_iterable($val)) {

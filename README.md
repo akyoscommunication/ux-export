@@ -61,7 +61,6 @@ are listed in the export when their `groups` option matches the group passed to
 the exporter. You may also rely on Symfony's `#[Groups]` attribute as a
 fallback.
 
-
 Usage of Exportable Attributes
 ------------------------------
 
@@ -72,7 +71,6 @@ Usage of Exportable Attributes
 - `position`: integer used to order columns.
 - `fields`: extract sub-fields from a related entity.
  - `fields`: extract sub-fields from a related entity. When omitted, fields having the same group on the related entity are exported automatically.
-
 - `manyToMany`: set to `lines` to duplicate rows for each relation or to
   `sheet` to create an additional worksheet listing the intermediate table.
 
@@ -86,7 +84,6 @@ private Collection $users;
 ### Exporting Nested Fields
 
 The `fields` option allows you to export specific properties from a related entity. If omitted, the exporter will automatically include every property of the child entity that belongs to the selected group:
-
 
 ```php
 #[Exportable]
@@ -108,7 +105,6 @@ private Collection $tags;
 
 // or create a dedicated worksheet listing the relations
 #[ExportableProperty(groups: ['export'], manyToMany: ExportableProperty::MODE_SHEET)]
-
 private Collection $roles;
 ```
 
@@ -146,7 +142,6 @@ class UserTableComponent
 
     public string $class = User::class;
     public ?string $exportGroup = 'default';
-
 
     private UserRepository $repository;
 
@@ -191,7 +186,6 @@ class UserTableComponent
     public string $exportType = 'csv';
     public string $exportFileName = 'users';
     public ?string $exportGroup = 'default';
-
 
     private UserRepository $repository;
 

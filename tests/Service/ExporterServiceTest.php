@@ -62,7 +62,6 @@ class ExporterServiceTest extends TestCase
         $data = [new DummyWithMethod('John', 'Doe')];
         $this->service->populateData($spreadsheet, $data, $properties, 'default');
 
-
         $sheet = $spreadsheet->getActiveSheet();
         $this->assertSame('Full name', $sheet->getCell([3,1])->getValue());
         $this->assertSame('John Doe', $sheet->getCell([3,2])->getValue());
@@ -91,7 +90,6 @@ class ExporterServiceTest extends TestCase
 
         $data = [new UserWithRolesSheet([new Role('admin'), new Role('user')])];
         $this->service->populateData($spreadsheet, $data, $properties, 'default');
-
 
         $sheet = $spreadsheet->getSheetByName('roles');
         $this->assertNotNull($sheet);
@@ -164,52 +162,6 @@ class UserWithRolesLines
 class UserWithRolesSheet
 {
     #[ExportableProperty(groups: ['default'], manyToMany: ExportableProperty::MODE_SHEET)]
-    public array $roles;
-
-    public function __construct(array $roles)
-    {
-        $this->roles = $roles;
-    }
-}
-
-#[Exportable]
-class DummyWithMethod
-{
-    #[ExportableProperty(groups: ['default'])]
-    public string $firstName;
-
-    #[ExportableProperty(groups: ['default'])]
-    public string $lastName;
-
-    #[ExportableProperty(groups: ['default'])]
-    public function getFullName(): string
-    {
-        return $this->firstName.' '.$this->lastName;
-    }
-
-    public function __construct(string $firstName, string $lastName)
-    {
-        $this->firstName = $firstName;
-        $this->lastName = $lastName;
-    }
-}
-
-#[Exportable]
-class UserWithRolesLines
-{
-    #[ExportableProperty(groups: ['default'], fields: ['name'], manyToMany: ExportableProperty::MODE_LINES)]
-    public array $roles;
-
-    public function __construct(array $roles)
-    {
-        $this->roles = $roles;
-    }
-}
-
-#[Exportable]
-class UserWithRolesSheet
-{
-    #[ExportableProperty(groups: ['default'], fields: ['name'], manyToMany: ExportableProperty::MODE_SHEET)]
     public array $roles;
 
     public function __construct(array $roles)
