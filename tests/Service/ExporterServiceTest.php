@@ -1,0 +1,66 @@
+<?php
+
+namespace Akyos\UXExportBundle\Tests\Service;
+
+use Akyos\UXExportBundle\Service\ExporterService;
+use Akyos\UXExportBundle\Attribute\ExportableProperty;
+use Akyos\UXExportBundle\Attribute\Exportable;
+use PhpOffice\PhpSpreadsheet\Spreadsheet;
+use PHPUnit\Framework\TestCase;
+
+class ExporterServiceTest extends TestCase
+{
+    private ExporterService $service;
+
+    protected function setUp(): void
+    {
+        $this->service = new ExporterService();
+    }
+
+    public function testGenerateMatrixUsesPropertyNames(): void
+    {
+        $spreadsheet = new Spreadsheet();
+        $reflection = new \ReflectionClass(Dummy::class);
+        $properties = $reflection->getProperties();
+
+        $this->service->generateMatrix($spreadsheet, $properties);
+
+        $sheet = $spreadsheet->getActiveSheet();
+        $this->assertSame('username', $sheet->getCell([1,1])->getValue());
+        $this->assertSame('Email', $sheet->getCell([2,1])->getValue());
+    }
+
+    public function testManyToManyLines(): void
+    {
+        $collection = [new Role('admin'), new Role('user')];
+        $result = $this->service->manyToManyLines($collection, 'name');
+        $this->assertSame("admin\nuser", $result);
+    }
+
+    public function testManyToManySheet(): void
+    {
+        $spreadsheet = new Spreadsheet();
+        $collection = [new Role('admin'), new Role('user')];
+        $this->service->manyToManySheet($spreadsheet, $collection, 'name', 'roles');
+
+        $sheet = $spreadsheet->getSheetByName('roles');
+        $this->assertNotNull($sheet);
+        $this->assertSame('admin', $sheet->getCell([1,1])->getValue());
+        $this->assertSame('user', $sheet->getCell([1,2])->getValue());
+    }
+}
+
+#[Exportable]
+class Dummy
+{
+    #[ExportableProperty(groups: ['default'])]
+    public string $username;
+
+    #[ExportableProperty(name: 'Email', groups: ['default'])]
+    public string $email;
+}
+
+class Role
+{
+    public function __construct(public string $name) {}
+}

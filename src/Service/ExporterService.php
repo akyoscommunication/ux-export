@@ -75,6 +75,30 @@ class ExporterService
         $this->populateManyToManySheets($spreadsheet, $data, $properties, $propertyAccessor);
     }
 
+    public function manyToManyLines(iterable $collection, string $property): string
+    {
+        $accessor = PropertyAccess::createPropertyAccessor();
+        $values = [];
+
+        foreach ($collection as $item) {
+            $values[] = $accessor->getValue($item, $property);
+        }
+
+        return implode("\n", $values);
+    }
+
+    public function manyToManySheet(Spreadsheet $spreadsheet, iterable $collection, string $property, string $sheetName): void
+    {
+        $accessor = PropertyAccess::createPropertyAccessor();
+        $sheet = new Worksheet($spreadsheet, $sheetName);
+        $spreadsheet->addSheet($sheet);
+
+        foreach ($collection as $rowIndex => $item) {
+            $value = $accessor->getValue($item, $property);
+            $sheet->setCellValue([1, $rowIndex + 1], $value);
+        }
+    }
+
     private function getPropertyName(\ReflectionProperty|\ReflectionMethod $property, ?string $subField = null): string
     {
         $attribute = $this->getAttribute($property);
