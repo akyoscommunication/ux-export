@@ -64,7 +64,6 @@ trait ComponentWithExportTrait
             $fileName = rtrim($path, '/') . '/' . $this->exportFileName . '.' . $this->exportType;
             $writer->save($fileName);
         }
-
         $url = $urlGenerator->generate('ux_export.download', ['path' => $fileName]);
 
         return new RedirectResponse($url);

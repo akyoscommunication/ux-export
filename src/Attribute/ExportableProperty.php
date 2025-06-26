@@ -12,7 +12,6 @@ class ExportableProperty extends Groups
         public ?string $name = null,
         public ?array $groups = null,
         public ?int $position = null,
-        public ?array $fields = null,
         public ?string $manyToMany = null,
     ) {
         parent::__construct($groups);

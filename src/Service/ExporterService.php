@@ -2,12 +2,17 @@
 
 namespace Akyos\UXExportBundle\Service;
 
-use Akyos\UXExportBundle\Attribute\ExportableProperty;
+use ReflectionProperty;
+use Doctrine\ORM\Mapping\ManyToMany;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
-use PhpOffice\PhpSpreadsheet\Writer\BaseWriter;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
+use PhpOffice\PhpSpreadsheet\Writer\BaseWriter;
 use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
 use Symfony\Component\PropertyAccess\PropertyAccess;
+use Akyos\UXExportBundle\Attribute\ExportableProperty;
+use Doctrine\ORM\Mapping\OneToOne;
+use Doctrine\ORM\Mapping\OneToMany;
+use Doctrine\ORM\Mapping\ManyToOne;
 
 class ExporterService
 {
@@ -21,16 +26,30 @@ class ExporterService
 
     public function generateMatrix(Spreadsheet $spreadsheet, array $properties, array $data = [], ?string $group = null): void
     {
+        dump('=== DÉBUT generateMatrix ===');
+        dump('Nombre de propriétés:', count($properties));
+        dump('Group:', $group);
+        
         $columnIndex = 1;
         foreach ($properties as $property) {
             $attribute = $this->getAttribute($property);
+            dump('Propriété dans generateMatrix:', $property->getName());
+            dump('Attribute dans generateMatrix:', $attribute);
 
             if ($attribute && $attribute->manyToMany === ExportableProperty::MODE_SHEET) {
+                dump('Propriété SHEET ignorée dans generateMatrix');
                 continue;
             }
 
-            $fields = $attribute?->fields;
-            if ($fields === null) {
+            if ($class = $this->getRelationTargetClassFromAttributes($property)) {
+                dump('Classe cible détectée:', $class);
+                $fields = $this->getFieldsFromEntity($class, $group);
+                dump('Champs de la classe cible:', $fields);
+                if (empty($fields)) {
+                    $fields = [null];
+                }
+            } else {
+                dump('Pas de classe cible détectée, utilisation de getRelatedFields');
                 $fields = $this->getRelatedFields($property, $data, $group);
                 if (empty($fields)) {
                     $fields = [null];
@@ -39,10 +58,13 @@ class ExporterService
 
             foreach ($fields as $field) {
                 $name = $this->getPropertyName($property, $field);
+                dump('Nom de colonne généré:', $name);
                 $spreadsheet->getActiveSheet()->setCellValue([$columnIndex, 1], $name);
                 $columnIndex++;
             }
         }
+        
+        dump('=== FIN generateMatrix ===');
     }
 
     public function populateData(Spreadsheet $spreadsheet, array $data, array $properties, ?string $group = null): void
@@ -66,15 +88,13 @@ class ExporterService
                     } else {
                         $value = $propertyAccessor->getValue($item, $property->getName());
                     }
-
+                    
                     if ($attribute && $attribute->manyToMany === ExportableProperty::MODE_LINES) {
                         $value = ($value[$line] ?? null);
                     }
 
-                    $fields = $attribute?->fields;
-                    if ($fields === null) {
-                        $fields = $this->getRelatedFields($property, [$value], $group);
-                    }
+                    $fields = $this->getRelatedFields($property, [$value], $group);
+                    
                     $values = $this->extractValues($value, $fields, $propertyAccessor, $group);
 
 
@@ -88,7 +108,6 @@ class ExporterService
         }
 
         $this->populateManyToManySheets($spreadsheet, $data, $properties, $propertyAccessor, $group);
-
     }
 
     public function manyToManyLines(iterable $collection, string $property): string
@@ -183,18 +202,35 @@ class ExporterService
 
     private function populateManyToManySheets(Spreadsheet $spreadsheet, array $data, array $properties, $accessor, ?string $group): void
     {
+        dump('=== DÉBUT populateManyToManySheets ===');
+        dump('Nombre de propriétés à traiter:', count($properties));
+        
         foreach ($properties as $property) {
             $attribute = $this->getAttribute($property);
+            dump('Propriété:', $property->getName());
+            dump('Attribute:', $attribute);
+            
             if (!$attribute || $attribute->manyToMany !== ExportableProperty::MODE_SHEET) {
+                dump('Propriété ignorée - pas MODE_SHEET ou pas d\'attribute');
                 continue;
             }
 
+            dump('Propriété MODE_SHEET trouvée!');
             $sheet = new Worksheet($spreadsheet, $this->getPropertyName($property));
             $spreadsheet->addSheet($sheet);
 
             $headerIndex = 1;
             $sheet->setCellValue([1, 1], 'row');
-            $fields = $attribute->fields ?? $this->getRelatedFields($property, $data, $group);
+            
+            $targetClass = $this->getRelationTargetClassFromAttributes($property);
+            if ($targetClass) {
+                $fields = $this->getFieldsFromEntity($targetClass, $group);
+            } else {
+                $fields = $this->getRelatedFields($property, $data, $group);
+            }
+            
+            dump('Champs détectés pour la feuille:', $fields);
+            
             foreach ($fields as $field) {
                 $sheet->setCellValue([$headerIndex + 1, 1], $field);
                 $headerIndex++;
@@ -203,20 +239,34 @@ class ExporterService
             $rowIndex = 2;
             foreach ($data as $i => $item) {
                 $collection = $accessor->getValue($item, $property->getName());
+                dump('Collection pour item', $i, ':', $collection);
+                dump('Type de collection:', gettype($collection));
+                dump('Est itérable:', is_iterable($collection));
+                
                 if (!is_iterable($collection)) {
+                    dump('Collection non itérable, on passe');
                     continue;
                 }
+                
+                $collectionCount = 0;
                 foreach ($collection as $element) {
+                    dump('Élément de la collection:', $element);
                     $sheet->setCellValue([1, $rowIndex], $i + 1);
                     $colIndex = 2;
                     foreach ($fields as $field) {
-                        $sheet->setCellValue([$colIndex, $rowIndex], $accessor->getValue($element, $field));
+                        $fieldValue = $accessor->getValue($element, $field);
+                        dump('Valeur du champ', $field, ':', $fieldValue);
+                        $sheet->setCellValue([$colIndex, $rowIndex], $fieldValue);
                         $colIndex++;
                     }
                     $rowIndex++;
+                    $collectionCount++;
                 }
+                dump('Nombre d\'éléments traités pour cet item:', $collectionCount);
             }
         }
+        
+        dump('=== FIN populateManyToManySheets ===');
     }
 
     private function getRelatedFields(\ReflectionProperty|\ReflectionMethod $property, array $data, ?string $group): array
@@ -234,6 +284,7 @@ class ExporterService
         if ($property instanceof \ReflectionProperty) {
             $type = $property->getType();
             if ($type instanceof \ReflectionNamedType && !$type->isBuiltin()) {
+                $property = $this->getAttribute($property, ManyToMany::class);
                 return $type->getName();
             }
         } elseif ($property instanceof \ReflectionMethod) {
@@ -242,7 +293,6 @@ class ExporterService
                 return $type->getName();
             }
         }
-
         foreach ($data as $item) {
             if (!\is_object($item) && !\is_array($item)) {
                 continue;
@@ -296,5 +346,25 @@ class ExporterService
         }
 
         return $fields;
+    }
+
+    function getRelationTargetClassFromAttributes(ReflectionProperty $property): ?string
+    {
+        $relationAttributes = [
+            OneToOne::class,
+            OneToMany::class,
+            ManyToOne::class,
+            ManyToMany::class,
+        ];
+
+        foreach ($relationAttributes as $relationClass) {
+            $attributes = $property->getAttributes($relationClass);
+            if (!empty($attributes)) {
+                $instance = $attributes[0]->newInstance();
+                return $instance->targetEntity ?? null;
+            }
+        }
+
+        return null;
     }
 }
