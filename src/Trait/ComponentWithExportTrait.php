@@ -17,6 +17,7 @@ use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
 use Symfony\Component\Serializer\Attribute\Groups;
 use Symfony\UX\LiveComponent\Attribute\LiveAction;
 use Symfony\UX\LiveComponent\Attribute\LiveProp;
+use Closure;
 
 trait ComponentWithExportTrait
 {
@@ -32,41 +33,93 @@ trait ComponentWithExportTrait
     #[LiveProp(writable: true)]
     public ?string $class = '';
 
+    /**
+     * Headers personnalisés pour l'export (si défini, prend le dessus sur la logique par attribut)
+     */
+    protected ?array $exportCustomHeaders = null;
+
+    /**
+     * Closure personnalisée pour générer la valeur d'une ligne (si défini, prend le dessus sur la logique par attribut)
+     */
+    protected ?Closure $exportCustomValueClosure = null;
+
+    public function setExportHeader(array $headers): void
+    {
+        $this->exportCustomHeaders = $headers;
+    }
+
+    public function setExportValueClosure(Closure $closure): void
+    {
+        $this->exportCustomValueClosure = $closure;
+    }
+
     #[LiveAction]
     public function export(ExporterService $exporterService, CsvExporterService $csvExporterService, UrlGeneratorInterface $urlGenerator, ContainerInterface $container): RedirectResponse
     {
-        $this->validateExportClass();
-
-        $properties = $this->getProperties();
-        $data = $this->getExportData();
-
-        $filesystem = new Filesystem();
-        $path = $container->getParameter('ux_export.path');
-
-        try {
+        if ($this->exportCustomHeaders !== null && $this->exportCustomValueClosure !== null) {
+            $properties = $this->getProperties();
+            $data = $this->getExportData();
+            $filesystem = new Filesystem();
+            $path = $container->getParameter('ux_export.path');
             if (!$filesystem->exists($path)) {
                 $filesystem->mkdir($path, 0777, true);
             }
-
             if (!is_writable($path)) {
                 throw new \RuntimeException(sprintf('The directory "%s" is not writable.', $path));
             }
-        } catch (IOExceptionInterface $exception) {
-            throw new \RuntimeException(sprintf('An error occurred while creating your directory at "%s"', $exception->getPath()), 0, $exception);
-        }
-
-        if ($this->exportType === 'csv') {
-            $fileName = $csvExporterService->export($data, $properties, $path, $this->exportFileName, $this->exportGroup);
-        } else {
-            $writer = $exporterService->getWriter($this->exportType);
-            $exporterService->generateMatrix($writer->getSpreadsheet(), $properties, $data, $this->exportGroup);
-            $exporterService->populateData($writer->getSpreadsheet(), $data, $properties, $this->exportGroup);
+            // Génération du fichier custom
+            $rows = [];
+            foreach ($data as $item) {
+                $rows[] = ($this->exportCustomValueClosure)($item);
+            }
             $fileName = rtrim($path, '/') . '/' . $this->exportFileName . '.' . $this->exportType;
-            $writer->save($fileName);
+            // On gère xlsx et csv
+            if ($this->exportType === 'csv') {
+                $f = fopen($fileName, 'w');
+                fputcsv($f, $this->exportCustomHeaders);
+                foreach ($rows as $row) {
+                    fputcsv($f, $row);
+                }
+                fclose($f);
+            } else {
+                $spreadsheet = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
+                $sheet = $spreadsheet->getActiveSheet();
+                $sheet->fromArray([$this->exportCustomHeaders], null, 'A1');
+                $sheet->fromArray($rows, null, 'A2');
+                $writer = $exporterService->getWriter($this->exportType, $spreadsheet);
+                $writer->save($fileName);
+            }
+            $url = $urlGenerator->generate('ux_export.download', ['path' => $fileName]);
+            return new RedirectResponse($url);
+        } else {
+            $this->validateExportClass();
+            $properties = $this->getProperties();
+            $data = $this->getExportData();
+            $filesystem = new Filesystem();
+            $path = $container->getParameter('ux_export.path');
+            try {
+                if (!$filesystem->exists($path)) {
+                    $filesystem->mkdir($path, 0777, true);
+                }
+                if (!is_writable($path)) {
+                    throw new \RuntimeException(sprintf('The directory "%s" is not writable.', $path));
+                }
+            } catch (IOExceptionInterface $exception) {
+                throw new \RuntimeException(sprintf('An error occurred while creating your directory at "%s"', $exception->getPath()), 0, $exception);
+            }
+            if ($this->exportType === 'csv') {
+                $fileName = $csvExporterService->export($data, $properties, $path, $this->exportFileName, $this->exportGroup);
+            } else {
+                $spreadsheet = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
+                $writer = $exporterService->getWriter($this->exportType, $spreadsheet);
+                $exporterService->generateMatrix($spreadsheet, $properties, $data, $this->exportGroup);
+                $exporterService->populateData($spreadsheet, $data, $properties, $this->exportGroup);
+                $fileName = rtrim($path, '/') . '/' . $this->exportFileName . '.' . $this->exportType;
+                $writer->save($fileName);
+            }
+            $url = $urlGenerator->generate('ux_export.download', ['path' => $fileName]);
+            return new RedirectResponse($url);
         }
-        $url = $urlGenerator->generate('ux_export.download', ['path' => $fileName]);
-
-        return new RedirectResponse($url);
     }
 
     private function validateExportClass(): void
@@ -88,6 +141,17 @@ trait ComponentWithExportTrait
 
     private function getProperties(): array
     {
+        // Si un header custom est défini, on l'utilise exclusivement
+        if ($this->exportCustomHeaders !== null) {
+            // On crée des propriétés virtuelles (ReflectionProperty fake) pour compatibilité
+            return array_map(function($header) {
+                return (object)[
+                    'getName' => fn() => $header,
+                    // Pour compatibilité avec le code existant
+                    'isCustomExportHeader' => true,
+                ];
+            }, $this->exportCustomHeaders);
+        }
         $reflectionClass = new ReflectionClass($this->class);
         $group = $this->exportGroup;
 

@@ -90,7 +90,13 @@ class ExporterService
                     }
                     
                     if ($attribute && $attribute->manyToMany === ExportableProperty::MODE_LINES) {
-                        $value = ($value[$line] ?? null);
+                        // Si la valeur est itérable, on peut accéder par index
+                        if (is_iterable($value)) {
+                            $value = ($value[$line] ?? null);
+                        } else {
+                            // Si ce n'est pas itérable (ex: un objet Rack simple), on utilise la valeur directement
+                            $value = $line === 0 ? $value : null;
+                        }
                     }
 
                     $fields = $this->getRelatedFields($property, [$value], $group);
@@ -99,7 +105,11 @@ class ExporterService
 
 
                     foreach ($values as $val) {
-                        $spreadsheet->getActiveSheet()->setCellValue([$columnIndex, $rowIndex], $val);
+                        try {
+                            $spreadsheet->getActiveSheet()->setCellValue([$columnIndex, $rowIndex], $val);
+                        } catch (\Throwable $e) {
+                            $spreadsheet->getActiveSheet()->setCellValue([$columnIndex, $rowIndex], implode(', ', $val->toArray()));
+                        }
                         $columnIndex++;
                     }
                 }
@@ -151,7 +161,17 @@ class ExporterService
     {
         $attributes = $property->getAttributes(ExportableProperty::class);
 
-        return !empty($attributes) ? $attributes[0]->newInstance() : null;
+        if (empty($attributes)) {
+            return null;
+        }
+
+        try {
+            return $attributes[0]->newInstance();
+        } catch (\Error $e) {
+            // Gestion du cas où le type 'self' ne peut pas être résolu
+            // On retourne null pour ignorer cette propriété
+            return null;
+        }
     }
 
     private function extractValues(mixed $value, ?array $fields, $accessor, ?string $group): array
@@ -192,6 +212,9 @@ class ExporterService
                     foreach ($collection as $_) {
                         $count++;
                     }
+                } else {
+                    // Si ce n'est pas itérable (ex: un objet Rack simple), on compte 1
+                    $count = $collection !== null ? 1 : 0;
                 }
                 $max = max($max, $count);
             }
@@ -284,13 +307,27 @@ class ExporterService
         if ($property instanceof \ReflectionProperty) {
             $type = $property->getType();
             if ($type instanceof \ReflectionNamedType && !$type->isBuiltin()) {
+                $typeName = $type->getName();
+                
+                // Si le type est 'self', on le remplace par la classe déclarante
+                if ($typeName === 'self') {
+                    $typeName = $property->getDeclaringClass()->getName();
+                }
+                
                 $property = $this->getAttribute($property, ManyToMany::class);
-                return $type->getName();
+                return $typeName;
             }
         } elseif ($property instanceof \ReflectionMethod) {
             $type = $property->getReturnType();
             if ($type instanceof \ReflectionNamedType && !$type->isBuiltin()) {
-                return $type->getName();
+                $typeName = $type->getName();
+                
+                // Si le type est 'self', on le remplace par la classe déclarante
+                if ($typeName === 'self') {
+                    $typeName = $property->getDeclaringClass()->getName();
+                }
+                
+                return $typeName;
             }
         }
         foreach ($data as $item) {
@@ -332,14 +369,32 @@ class ExporterService
 
     private function getFieldsFromEntity(string $class, ?string $group): array
     {
-        $reflection = new \ReflectionClass($class);
+        // Protection contre la classe 'self'
+        if ($class === 'self') {
+            return [];
+        }
+        
+        try {
+            $reflection = new \ReflectionClass($class);
+        } catch (\ReflectionException $e) {
+            // Si la classe n'existe pas, on retourne un tableau vide
+            return [];
+        }
         $fields = [];
         foreach ($reflection->getProperties() as $prop) {
             $attr = $prop->getAttributes(ExportableProperty::class);
             if (!$attr) {
                 continue;
             }
-            $inst = $attr[0]->newInstance();
+            
+            try {
+                $inst = $attr[0]->newInstance();
+            } catch (\Error $e) {
+                // Gestion du cas où le type 'self' ne peut pas être résolu
+                // On continue avec la propriété suivante
+                continue;
+            }
+            
             if ($group === null || in_array($group, $inst->groups)) {
                 $fields[] = $prop->getName();
             }
@@ -348,8 +403,11 @@ class ExporterService
         return $fields;
     }
 
-    function getRelationTargetClassFromAttributes(ReflectionProperty $property): ?string
+    function getRelationTargetClassFromAttributes(\ReflectionProperty|\ReflectionMethod $property): ?string
     {
+        if (!$property instanceof \ReflectionProperty) {
+            return null;
+        }
         $relationAttributes = [
             OneToOne::class,
             OneToMany::class,
@@ -360,8 +418,21 @@ class ExporterService
         foreach ($relationAttributes as $relationClass) {
             $attributes = $property->getAttributes($relationClass);
             if (!empty($attributes)) {
-                $instance = $attributes[0]->newInstance();
-                return $instance->targetEntity ?? null;
+                try {
+                    $instance = $attributes[0]->newInstance();
+                    $targetEntity = $instance->targetEntity ?? null;
+                    
+                    // Si targetEntity est 'self', on le remplace par la classe courante
+                    if ($targetEntity === 'self') {
+                        $targetEntity = $property->getDeclaringClass()->getName();
+                    }
+                    
+                    return $targetEntity;
+                } catch (\Error $e) {
+                    // Gestion du cas où le type 'self' ne peut pas être résolu
+                    // On continue avec l'attribut suivant
+                    continue;
+                }
             }
         }
 
