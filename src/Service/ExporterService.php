@@ -29,10 +29,10 @@ class ExporterService
         dump('=== DÉBUT generateMatrix ===');
         dump('Nombre de propriétés:', count($properties));
         dump('Group:', $group);
-        
+
         $columnIndex = 1;
         foreach ($properties as $property) {
-            $attribute = $this->getAttribute($property);
+            $attribute = $this->getAttribute($property, $group);
             dump('Propriété dans generateMatrix:', $property->getName());
             dump('Attribute dans generateMatrix:', $attribute);
 
@@ -57,13 +57,14 @@ class ExporterService
             }
 
             foreach ($fields as $field) {
-                $name = $this->getPropertyName($property, $field);
+                dump('Traitement du champ:', $property, $field, $group);
+                $name = $this->getPropertyName($property, $field, $group);
                 dump('Nom de colonne généré:', $name);
                 $spreadsheet->getActiveSheet()->setCellValue([$columnIndex, 1], $name);
                 $columnIndex++;
             }
         }
-        
+
         dump('=== FIN generateMatrix ===');
     }
 
@@ -88,7 +89,7 @@ class ExporterService
                     } else {
                         $value = $propertyAccessor->getValue($item, $property->getName());
                     }
-                    
+
                     if ($attribute && $attribute->manyToMany === ExportableProperty::MODE_LINES) {
                         // Si la valeur est itérable, on peut accéder par index
                         if (is_iterable($value)) {
@@ -100,7 +101,7 @@ class ExporterService
                     }
 
                     $fields = $this->getRelatedFields($property, [$value], $group);
-                    
+
                     $values = $this->extractValues($value, $fields, $propertyAccessor, $group);
 
 
@@ -144,20 +145,23 @@ class ExporterService
         }
     }
 
-    private function getPropertyName(\ReflectionProperty|\ReflectionMethod $property, ?string $subField = null): string
+    private function getPropertyName(\ReflectionProperty|\ReflectionMethod $property, ?string $subField = null, ?string $group = null): string
     {
-        $attribute = $this->getAttribute($property);
+        $attribute = $this->getAttribute($property, $group);
 
-        $name = $attribute?->name ?? $property->getName();
+        $name = $attribute?->name ?: $property->getName();
 
         if ($subField) {
+            $attribute = $this->getFieldAttributeFromEntity($this->detectClass($property, []), $group, $subField);
+            if ($attribute && $attribute?->name) {
+                return $attribute->name;
+            }
             return sprintf('%s_%s', $name, $subField);
         }
-
         return $name;
     }
 
-    private function getAttribute(\ReflectionProperty|\ReflectionMethod $property): ?ExportableProperty
+    private function getAttribute(\ReflectionProperty|\ReflectionMethod $property, ?string $group = null): ?ExportableProperty
     {
         $attributes = $property->getAttributes(ExportableProperty::class);
 
@@ -166,12 +170,20 @@ class ExporterService
         }
 
         try {
-            return $attributes[0]->newInstance();
+            /** @var ExportableProperty $attribute */
+            foreach ($attributes as $attribute) {
+                $inst = $attribute->newInstance();
+                if ($group === null || in_array($group, $inst->groups, true)) {
+                    return $inst;
+                }
+            }
         } catch (\Error $e) {
             // Gestion du cas où le type 'self' ne peut pas être résolu
             // On retourne null pour ignorer cette propriété
             return null;
         }
+
+        return null;
     }
 
     private function extractValues(mixed $value, ?array $fields, $accessor, ?string $group): array
@@ -227,12 +239,12 @@ class ExporterService
     {
         dump('=== DÉBUT populateManyToManySheets ===');
         dump('Nombre de propriétés à traiter:', count($properties));
-        
+
         foreach ($properties as $property) {
             $attribute = $this->getAttribute($property);
             dump('Propriété:', $property->getName());
             dump('Attribute:', $attribute);
-            
+
             if (!$attribute || $attribute->manyToMany !== ExportableProperty::MODE_SHEET) {
                 dump('Propriété ignorée - pas MODE_SHEET ou pas d\'attribute');
                 continue;
@@ -244,16 +256,16 @@ class ExporterService
 
             $headerIndex = 1;
             $sheet->setCellValue([1, 1], 'row');
-            
+
             $targetClass = $this->getRelationTargetClassFromAttributes($property);
             if ($targetClass) {
                 $fields = $this->getFieldsFromEntity($targetClass, $group);
             } else {
                 $fields = $this->getRelatedFields($property, $data, $group);
             }
-            
+
             dump('Champs détectés pour la feuille:', $fields);
-            
+
             foreach ($fields as $field) {
                 $sheet->setCellValue([$headerIndex + 1, 1], $field);
                 $headerIndex++;
@@ -265,12 +277,12 @@ class ExporterService
                 dump('Collection pour item', $i, ':', $collection);
                 dump('Type de collection:', gettype($collection));
                 dump('Est itérable:', is_iterable($collection));
-                
+
                 if (!is_iterable($collection)) {
                     dump('Collection non itérable, on passe');
                     continue;
                 }
-                
+
                 $collectionCount = 0;
                 foreach ($collection as $element) {
                     dump('Élément de la collection:', $element);
@@ -288,7 +300,7 @@ class ExporterService
                 dump('Nombre d\'éléments traités pour cet item:', $collectionCount);
             }
         }
-        
+
         dump('=== FIN populateManyToManySheets ===');
     }
 
@@ -308,25 +320,23 @@ class ExporterService
             $type = $property->getType();
             if ($type instanceof \ReflectionNamedType && !$type->isBuiltin()) {
                 $typeName = $type->getName();
-                
+
                 // Si le type est 'self', on le remplace par la classe déclarante
                 if ($typeName === 'self') {
                     $typeName = $property->getDeclaringClass()->getName();
                 }
-                
-                $property = $this->getAttribute($property, ManyToMany::class);
                 return $typeName;
             }
         } elseif ($property instanceof \ReflectionMethod) {
             $type = $property->getReturnType();
             if ($type instanceof \ReflectionNamedType && !$type->isBuiltin()) {
                 $typeName = $type->getName();
-                
+
                 // Si le type est 'self', on le remplace par la classe déclarante
                 if ($typeName === 'self') {
                     $typeName = $property->getDeclaringClass()->getName();
                 }
-                
+
                 return $typeName;
             }
         }
@@ -367,13 +377,50 @@ class ExporterService
         return null;
     }
 
+    private function getFieldAttributeFromEntity(string $class, ?string $group, ?string $fieldName): ?ExportableProperty
+    {
+        if ($class === 'self') {
+            return null;
+        }
+        try {
+            $reflection = new \ReflectionClass($class);
+        } catch (\ReflectionException $e) {
+            return null;
+        }
+
+        if (!$reflection->hasProperty($fieldName)) {
+            return null;
+        }
+
+        $property = $reflection->getProperty($fieldName);
+        $attributes = $property->getAttributes(ExportableProperty::class);
+
+        if (empty($attributes)) {
+            return null;
+        }
+
+        try {
+            /** @var ExportableProperty $attribute */
+            foreach ($attributes as $attribute) {
+                $inst = $attribute->newInstance();
+                if ($group === null || in_array($group, $inst->groups, true)) {
+                    return $inst;
+                }
+            }
+        } catch (\Error $e) {
+            return null;
+        }
+
+        return null;
+    }
+
+
     private function getFieldsFromEntity(string $class, ?string $group): array
     {
         // Protection contre la classe 'self'
         if ($class === 'self') {
             return [];
         }
-        
         try {
             $reflection = new \ReflectionClass($class);
         } catch (\ReflectionException $e) {
@@ -382,24 +429,24 @@ class ExporterService
         }
         $fields = [];
         foreach ($reflection->getProperties() as $prop) {
-            $attr = $prop->getAttributes(ExportableProperty::class);
-            if (!$attr) {
+            $attrs = $prop->getAttributes(ExportableProperty::class);
+            if (!$attrs) {
                 continue;
             }
-            
+
             try {
-                $inst = $attr[0]->newInstance();
+                foreach ($attrs as $attr) {
+                    $inst = $attr->newInstance();
+                    if ($group === null || in_array($group, $inst->groups, true)) {
+                        $fields[] = $prop->getName();
+                    }
+                }
             } catch (\Error $e) {
                 // Gestion du cas où le type 'self' ne peut pas être résolu
                 // On continue avec la propriété suivante
                 continue;
             }
-            
-            if ($group === null || in_array($group, $inst->groups)) {
-                $fields[] = $prop->getName();
-            }
         }
-
         return $fields;
     }
 
@@ -408,6 +455,7 @@ class ExporterService
         if (!$property instanceof \ReflectionProperty) {
             return null;
         }
+
         $relationAttributes = [
             OneToOne::class,
             OneToMany::class,
@@ -421,12 +469,11 @@ class ExporterService
                 try {
                     $instance = $attributes[0]->newInstance();
                     $targetEntity = $instance->targetEntity ?? null;
-                    
                     // Si targetEntity est 'self', on le remplace par la classe courante
                     if ($targetEntity === 'self') {
                         $targetEntity = $property->getDeclaringClass()->getName();
                     }
-                    
+
                     return $targetEntity;
                 } catch (\Error $e) {
                     // Gestion du cas où le type 'self' ne peut pas être résolu
@@ -435,7 +482,7 @@ class ExporterService
                 }
             }
         }
-
+        dump('Aucune relation trouvée pour la propriété:', $property->getName());
         return null;
     }
 }
