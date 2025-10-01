@@ -5,7 +5,7 @@ namespace Akyos\UXExportBundle\Attribute;
 use Attribute;
 use Symfony\Component\Serializer\Attribute\Groups;
 
-#[Attribute(Attribute::TARGET_PROPERTY | Attribute::TARGET_METHOD)]
+#[Attribute(Attribute::TARGET_PROPERTY | Attribute::TARGET_METHOD | Attribute::IS_REPEATABLE)]
 class ExportableProperty extends Groups
 {
     public function __construct(
